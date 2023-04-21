@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="description"
+      content="JSON Maker"
+    />
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+
+    <title>JSONSchema Serverless CRUD App</title>
+          
+    <!-- API for Google one-tap login, jwt-decode also included -->
+    <script src="https://apis.google.com/js/platform.js" async defer></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@2.2.0/build/jwt-decode.min.js"></script>
+
+    <!-- TODO: google client id goes in content field -->
+    <meta name="google-signin-client_id" content="here?">
+
+    <script src="assets/server.js"></script>
+
+    <!-- Defines handleCredentialReponse that is used in one-tap login data-callback -->
+    
+    <script>
+
+      function handleCredentialResponse(response) {
+        const idToken = response.credential;
+        const decoded = jwt_decode(idToken);
+        console.log(decoded);
+        if (decoded != null) {
+          console.log("entered");
+          document.getElementById('table-container').style.display = 'block';
+          document.getElementById('modal-container').style.display = 'block';
+        }
+      }
+      window.onload  = () =>{
+          google.accounts.id.initialize({
+              //TODO: Fill in client_id
+              client_id: lambdaServer.clientID,
+              callback: handleCredentialResponse,
+              cancel_on_tap_outside: false
+          });
+          console.log('Google library loaded!');
+      }
+    </script>
+   
+    <!-- Script for one-tap -->
+  </head>
+
+  <body>
+    <div id="g_id_onload" data-auto_prompt="true"
+            data-client_id=""
+            data-callback="handleCredentialResponse">
+        <div class="g_id_signin" data-type="standard" data-size="large" data-theme="filled_blue" data-text="continue_with" data-shape="rectangular" data-logo_alignment="center"></div>
+
+    <div id="root"></div>
+
+    <div id="modal-container" class="modal" style="display: none;"></div>
+    
+    <div id="table-container" class="styled-table" style="display: none;"></div>
+    <script src="assets/server.js"></script>
+
+    <script type="module">
+      var gIdOnLoadDiv = document.getElementById('g_id_onload');
+      gIdOnLoadDiv.setAttribute('data-client_id', GOOG_CLIENT_ID);
+    </script>
+  </body>
+</html>
+

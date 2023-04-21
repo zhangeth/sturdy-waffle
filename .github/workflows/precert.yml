@@ -1,0 +1,59 @@
+name: Pre-Certification Workflow (Deprecated)
+
+on: workflow_dispatch
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    strategy:
+      matrix:
+        node-version: [18.x]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+    - name: Install Dependencies
+      run: yarn install
+    - name: Run Initial Scripts and Build
+      run: yarn run build
+    - name: Set API Handler to Test Version
+      run: |
+        echo "HANDLER=handlertest" >> $GITHUB_ENV
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    - name: Create Hosted Zone
+      run: aws route53 create-hosted-zone --name ${{ vars.ROOT_DOMAIN }} --caller-reference "$(date +%s)"
+    - name: Request AWS Certificate
+      uses: serverless/github-action@v3.1
+      with:
+        args: -c "serverless create-cert --stage null"
+        entrypoint: /bin/sh
+    - name: Deploy Test Environment to Generate Endpoint
+      uses: serverless/github-action@v3.1
+      with:
+        args: -c "serverless deploy --stage test"
+        entrypoint: /bin/sh
+
+env:
+  SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }} # To link with your Serverless Framework account, equivalent to login
+  GOOG_CLIENT_ID: ${{ secrets.GOOG_CLIENT_ID }}
+  GOOG_CLIENT_SECRET: ${{ secrets.GOOG_CLIENT_SECRET }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  APP_NAME: ${{ vars.APP }}
+  ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+  SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+  ORG_NAME: ${{ vars.ORG }}
+  JSCHEMA: ${{ vars.JSCHEMA }}
+  UISCHEMA: ${{ vars.UISCHEMA }}

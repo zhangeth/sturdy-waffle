@@ -1,0 +1,331 @@
+{
+	"info": {
+		"_postman_id": "45d59f57-1264-472f-a1aa-047f7bc15fcd",
+		"name": "jsonschema-serverless-crud",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "25517861"
+	},
+	"item": [
+		{
+			"name": "heartbeat",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 200ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(200);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Wakeup Call",
+							"pm.sendRequest({",
+							"  url: pm.environment.get('server_url') + '/heartbeat',",
+							"  method: 'POST',",
+							"  header: {",
+							"    'Content-Type': 'application/json'",
+							"  },",
+							"  body: \"\"",
+							"}, function (err, res) {",
+							"  if (err) {",
+							"    console.log(err);",
+							"  } else {",
+							"    console.log(res);",
+							"  }",
+							"});",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{server_url}}/heartbeat",
+					"host": [
+						"{{server_url}}"
+					],
+					"path": [
+						"heartbeat"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "setExperiment",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Experiment is set and UID is returned\", () => {",
+							"    pm.expect(pm.response.text()).to.include(\"uid\");",
+							"});",
+							"",
+							"pm.test(\"Save ID to environment\", function () {",
+							"    var response = JSON.parse(responseBody);",
+							"    pm.environment.set(\"uid\", response.uid);",
+							"});",
+							"",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{{sampleRequest}}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{server_url}}/setExperiment",
+					"host": [
+						"{{server_url}}"
+					],
+					"path": [
+						"setExperiment"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "getById",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// Recursively check if two objects have the same keys and values",
+							"function areObjectsEqual(object1, object2) {",
+							"  // Check if the objects have the same keys",
+							"  const object1Keys = Object.keys(object1).sort();",
+							"  const object2Keys = Object.keys(object2).sort();",
+							"  if (!pm.expect(object1Keys).to.eql(object2Keys)) {",
+							"    return false;",
+							"  }",
+							"",
+							"  // Check if the objects have the same values for each key",
+							"  for (const key of object1Keys) {",
+							"    const value1 = object1[key];",
+							"    const value2 = object2[key];",
+							"",
+							"    // TODO: Check if links are downloadable files and compare the values using file convention",
+							"    if (typeof value2 === \"string\" && value2.includes(';base64,') && value2.includes('dummy')) {",
+							"        return value1.includes('-file-bucket-test.s3.amazonaws.com/') && value1.includes(pm.environment.get(\"uid\"));",
+							"            }",
+							"",
+							"    if (typeof value1 === \"object\" && typeof value2 === \"object\") {",
+							"      if (!areObjectsEqual(value1, value2)) {",
+							"        return false;",
+							"      }",
+							"    } else if (!pm.expect(value1).to.eql(value2)) {",
+							"      return false;",
+							"    }",
+							"  }",
+							"",
+							"  return true;",
+							"}",
+							"",
+							"const responseJson = pm.response.json()[0];",
+							"",
+							"// Get the environment object",
+							"const environmentJson = JSON.parse(pm.environment.get('sampleRequest'));",
+							"",
+							"// Test that the response object contains the same values as the environment object",
+							"pm.test(\"Response contains expected values\", function() {",
+							"    // TODO: Remove \"uid: \" field from response. This causes the test to fail",
+							"    delete responseJson.uid;",
+							"    pm.expect(areObjectsEqual(responseJson, environmentJson)).to.be.true;",
+							"});",
+							"",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"uid\": \"{{uid}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{server_url}}/getById",
+					"host": [
+						"{{server_url}}"
+					],
+					"path": [
+						"getById"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "getByEmail",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"function areObjectsEqual(object1, object2) {",
+							"  // Check if the objects have the same keys",
+							"  const object1Keys = Object.keys(object1).sort();",
+							"  const object2Keys = Object.keys(object2).sort();",
+							"  if (!pm.expect(object1Keys).to.eql(object2Keys)) {",
+							"    return false;",
+							"  }",
+							"",
+							"  // Check if the objects have the same values for each key",
+							"  for (const key of object1Keys) {",
+							"    const value1 = object1[key];",
+							"    const value2 = object2[key];",
+							"",
+							"    // TODO: Check if links are downloadable files and compare the values using file convention",
+							"    if (typeof value2 === \"string\" && value2.includes(';base64,') && value2.includes('dummy')) {",
+							"        return value1.includes('-file-bucket-test.s3.amazonaws.com/') && value1.includes(pm.environment.get(\"uid\"));",
+							"            }",
+							"",
+							"    if (typeof value1 === \"object\" && typeof value2 === \"object\") {",
+							"      if (!areObjectsEqual(value1, value2)) {",
+							"        return false;",
+							"      }",
+							"    } else if (!pm.expect(value1).to.eql(value2)) {",
+							"      return false;",
+							"    }",
+							"  }",
+							"",
+							"  return true;",
+							"}",
+							"",
+							"const responseJson = pm.response.json()[0];",
+							"",
+							"// Get the environment object",
+							"const environmentJson = JSON.parse(pm.environment.get('sampleRequest'));",
+							"",
+							"// Test that the response object contains the same values as the environment object",
+							"pm.test(\"Response contains expected values\", function() {",
+							"  delete responseJson.uid;",
+							"  pm.expect(areObjectsEqual(responseJson, environmentJson)).to.be.true;",
+							"});",
+							"",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json; charset=UTF-8",
+						"type": "text"
+					},
+					{
+						"key": "",
+						"value": "",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\": \"test@test.com\",\n    \"jwtToken\": {\n        \"clientId\": \"token\",\n        \"credential\": \"token\",\n        \"select_by\": \"user\"\n    }\n}\n\n"
+				},
+				"url": {
+					"raw": "{{server_url}}/getByEmail",
+					"host": [
+						"{{server_url}}"
+					],
+					"path": [
+						"getByEmail"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

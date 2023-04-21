@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    /* Visit https://aka.ms/tsconfig to read more about this file */
+    "target": "es2022",                                  /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
+    "module": "commonjs",                                /* Specify what module code is generated. */
+    "rootDir": "./",                                  /* Specify the root folder within your source files. */
+    "outDir": "./build",                              
+  },
+  "include": [
+    "**/*.ts"
+  ],
+  "types": [
+    "jwt-decode",
+    "google"
+  ]
+
+}

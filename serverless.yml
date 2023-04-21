@@ -1,0 +1,181 @@
+plugins:
+  - serverless-finch
+  - serverless-certificate-creator
+
+
+# grabbing app info from deploy.yml
+org: ${env:ORG_NAME}
+app: ${env:APP_NAME}
+service: ${env:SERVICE_NAME}
+frameworkVersion: '3'
+
+custom:
+  # dynamically creating certificate for new subdomain
+  customCertificate:
+    certificateName: '${env:ROOT_DOMAIN}'
+    hostedZoneNames: '${env:ROOT_DOMAIN}.'
+    subjectAlternativeNames : 
+      - 'test.${env:ROOT_DOMAIN}'
+      - 'prod.${env:ROOT_DOMAIN}'
+  tableName: '${env:APP_NAME}-data-table-${sls:stage}'
+  bucketName: '${env:APP_NAME}-file-bucket-${sls:stage}'
+  deployDomain: '${sls:stage}.${env:ROOT_DOMAIN}'
+  # grabbing certificate ARN from customCertificate
+  certificateARN: ${certificate(${self:custom.customCertificate.certificateName}):CertificateArn}
+  dynamodb:
+    start:
+      migrate: false
+    stages:
+      - ${sls:stage}
+  client:
+    bucketName: '${env:APP_NAME}-web-bucket-${sls:stage}'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  timeout: 5
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+          Resource:
+            - Fn::GetAtt: [ DataTable, Arn ]
+        - Effect: 'Allow'
+          Action:
+            - "s3:GetObject"
+            - "s3:PutObject"
+          Resource:
+            Fn::Join:
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref StorageBucket
+                - '/*'
+  environment:
+    DATA_TABLE: ${self:custom.tableName}
+    STORAGE_BUCKET: ${self:custom.bucketName}
+    REGION: "us-east-1"
+    CLIENT_ID: ${env:GOOG_CLIENT_ID}
+    CLIENT_SECRET: ${env:GOOG_CLIENT_SECRET}
+    APP_NAME: ${env:APP_NAME}
+    ORG_NAME: ${env:ORG_NAME}
+    SERVICE_NAME: ${env:SERVICE_NAME}
+    ROOT_DOMAIN: ${env:ROOT_DOMAIN}
+    JSCHEMA: ${env:JSCHEMA}
+    
+package:
+    excludeDevDependencies: true
+    exclude:
+      - .git/**
+      - .vscode/**        
+      - venv/**
+      - '**/*.ts'
+      - '**/*.tsx'
+
+functions:
+  api:
+    handler: ${env:HANDLER}.handler
+    events:
+      - httpApi: '*'
+
+resources:
+  Resources:
+    DataTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: uid
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: uid
+            KeyType: HASH
+          - AttributeName: email
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.tableName}
+    StorageBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.bucketName}
+    ClientBucketResource:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.client.bucketName}        
+    ClientBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: ${self:custom.client.bucketName}
+        PolicyDocument:
+          Statement:
+            - Sid: OAIGetObject
+              Effect: Allow
+              Principal:
+                AWS:
+                  Fn::Join:
+                    - " "
+                    - - arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity
+                      - Ref: S3OriginAccessIdentity
+              Action:
+                - s3:GetObject
+              Resource:
+                Fn::Join:
+                  - ""
+                  - - "arn:aws:s3:::"
+                    - Ref: ClientBucketResource
+                    - "/*"
+    S3OriginAccessIdentity:
+      Type: "AWS::CloudFront::CloudFrontOriginAccessIdentity"
+      Properties:
+        CloudFrontOriginAccessIdentityConfig:
+          Comment: Serverless managed web app S3 bucket origin-access-identity
+    ApiDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Aliases:
+            - ${self:custom.deployDomain}
+          ViewerCertificate:
+            SslSupportMethod: sni-only
+            AcmCertificateArn: ${self:custom.certificateARN}
+            MinimumProtocolVersion: TLSv1.2_2021
+          Origins:
+            - Id: WebApp
+              DomainName:
+                Fn::GetAtt: [ClientBucketResource, DomainName]
+              S3OriginConfig:
+                OriginAccessIdentity:
+                  Fn::Join:
+                    - ""
+                    - - origin-access-identity/cloudfront/
+                      - Ref: S3OriginAccessIdentity
+          Enabled: true
+          HttpVersion: http2
+          Comment: cdn for api gateway
+          PriceClass: PriceClass_All
+          DefaultRootObject: index.html
+          DefaultCacheBehavior:
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            ## The origin id defined above
+            TargetOriginId: WebApp
+            ## Defining if and how the QueryString and Cookies are forwarded to the origin which in this case is S3
+            ForwardedValues:
+              QueryString: "false"
+              Cookies:
+                Forward: none
+            ## The protocol that users can use to access the files in the origin. To allow HTTP use `allow-all`
+            ViewerProtocolPolicy: redirect-to-https
+          Logging:
+            IncludeCookies: "false"
+            Bucket: ""
+            Prefix: ""
+    
+    

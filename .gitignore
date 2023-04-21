@@ -1,0 +1,9 @@
+.fnm
+*.info
+*.DS_Store
+*.js
+node_modules
+test/dummyfiles
+test/sampleRequest.json
+test/paths.json
+test/pathsWithFile.json

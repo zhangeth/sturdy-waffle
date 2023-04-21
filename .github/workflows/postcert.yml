@@ -1,0 +1,104 @@
+name: Post-Certification Workflow (Deprecated)
+
+on: workflow_dispatch
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    strategy:
+      matrix:
+        node-version: [18.x]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+    - name: Install Dependencies
+      run: yarn install
+    - name: Run Initial Scripts and Build
+      run: yarn run build
+    - name: Set API Handler to Test Version
+      run: |
+        echo "HANDLER=handlertest" >> $GITHUB_ENV
+    - name: Deploy Test Environment with Endpoint Defined
+      uses: serverless/github-action@v3.1
+      with:
+        args: -c "serverless deploy --stage test"
+        entrypoint: /bin/sh
+    - name: Deploy Client Assests for Test Environment
+      uses: serverless/github-action@v3.1		
+      with:		
+        args: -c "echo 'y' | serverless client deploy --stage test"		
+        entrypoint: /bin/sh	
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    - name: Get test CloudFront distribution domain name
+      env:
+        TEST_DISTRIBUTION: ${{ env.TEST_DISTRIBUTION }}
+      run: |
+        distribution=$(aws cloudfront list-distributions --query 'DistributionList.Items[?contains(Aliases.Items, `test.${{ vars.ROOT_DOMAIN }}`)].{DomainName:DomainName}' --output text)
+        echo "TEST_DISTRIBUTION=$distribution" >> $GITHUB_ENV
+    - name: Get Hosted Zone ID
+      env: 
+        HOSTED_ZONE_ID: ${{ env.HOSTED_ZONE_ID }}
+      run: |
+        hosted_zone_id=$(aws route53 list-hosted-zones-by-name --dns-name ${{ vars.ROOT_DOMAIN }} --query 'HostedZones[0].Id' --output text | sed 's/\/hostedzone\///')
+        echo "HOSTED_ZONE_ID=$hosted_zone_id" >> $GITHUB_ENV
+    - name: Create test CNAME record
+      run: |
+        aws route53 change-resource-record-sets --hosted-zone-id ${{ env.HOSTED_ZONE_ID }} --change-batch '{"Changes":[{"Action":"CREATE","ResourceRecordSet":{"Name":"test.${{ vars.ROOT_DOMAIN }}","Type":"CNAME","TTL":300,"ResourceRecords":[{"Value":"${{ env.TEST_DISTRIBUTION }}" }]}}]}'
+    - name: Get test API Gateway endpoint
+      env:
+        ENDPOINT: ${{ env.ENDPOINT }}
+      run: |
+        endpoint=$(aws apigatewayv2 get-apis --query 'Items[?contains(Name, `test-${{ vars.SERVICE_NAME }}`)].ApiEndpoint' --output text)
+        echo "ENDPOINT=$endpoint" >> $GITHUB_ENV
+    - name: Newman Action
+      run: newman run test/jsonschema-serverless-crud.postman_collection.json  --environment test/jsonschema-serverless-crud.postman_environment.json --env-var "server_url=${{ env.ENDPOINT }}" --env-var "sampleRequest=$(cat test/sampleRequest.json)"
+    - name: Set API Handler to Production Version
+      run: |		
+        echo "HANDLER=handler.handler" >> $GITHUB_ENV		
+    - name: Deploy Prod Environment with Endpoint Defined
+      uses: serverless/github-action@v3.1		
+      with:		
+        args: -c "serverless deploy --stage prod"		
+        entrypoint: /bin/sh		
+    - name: Deploy Client Assets for Prod Environment
+      uses: serverless/github-action@v3.1		
+      with:		
+        args: -c "echo 'y' | serverless client deploy --stage prod"		
+        entrypoint: /bin/sh 
+    - name: Get prod CloudFront distribution domain name
+      env:
+        PROD_DISTRIBUTION: ${{ env.PROD_DISTRIBUTION }}
+      run: |
+        distribution=$(aws cloudfront list-distributions --query 'DistributionList.Items[?contains(Aliases.Items, `prod.${{ vars.ROOT_DOMAIN }}`)].{DomainName:DomainName}' --output text)
+        echo "PROD_DISTRIBUTION=$distribution" >> $GITHUB_ENV
+    - name: Create prod CNAME record
+      run: |
+        aws route53 change-resource-record-sets --hosted-zone-id ${{ env.HOSTED_ZONE_ID }} --change-batch '{"Changes":[{"Action":"CREATE","ResourceRecordSet":{"Name":"prod.${{ vars.ROOT_DOMAIN }}","Type":"CNAME","TTL":300,"ResourceRecords":[{"Value":"${{ env.PROD_DISTRIBUTION }}" }]}}]}'
+    - uses: actions/checkout@master
+
+
+env:
+  SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }} # To link with your Serverless Framework account, equivalent to login
+  GOOG_CLIENT_ID: ${{ secrets.GOOG_CLIENT_ID }}
+  GOOG_CLIENT_SECRET: ${{ secrets.GOOG_CLIENT_SECRET }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  APP_NAME: ${{ vars.APP }}
+  ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+  SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+  ORG_NAME: ${{ vars.ORG }}
+  JSCHEMA: ${{ vars.JSCHEMA }}
+  UISCHEMA: ${{ vars.UISCHEMA }}
